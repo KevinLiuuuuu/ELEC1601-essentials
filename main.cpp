@@ -43,33 +43,16 @@ void setup() {
 }
 
 void loop() {
-  int left = irDetect(irLedLeft, irReceiverLeft, 38000);
-  int mid = irDetect(irLedMid, irReceiverMid, 38000);
-  int right = irDetect(irLedRight, irReceiverRight, 38000);
+  int scenario = detectScenario();
 
-  if (mid == 1 && left == right) {
-    // Scenario 1: middle of a long corridor
-    digitalWrite(ledRight, HIGH);
-    digitalWrite(ledMid, LOW);
-    digitalWrite(ledLeft, LOW);
+  switch (scenario) {
 
-    delay(5000);   // hold LED display so it's visible
+    // Scenarios 2-10 will get their own case here as you build them out
 
-    servoLeft.writeMicroseconds(1600);
-    servoRight.writeMicroseconds(1400);
-    delay(FORWARD_5CM_MS);
-
-    servoLeft.writeMicroseconds(1500);
-    servoRight.writeMicroseconds(1500);
-  }
-
-  // add more "else if (...)" blocks here for scenarios 2-10
-
-  else {
-    // Scenario 0: Unknown Scenario
-    digitalWrite(ledRight, LOW);
-    digitalWrite(ledMid, LOW);
-    digitalWrite(ledLeft, LOW);
+    default:
+      digitalWrite(ledRight, LOW);
+      digitalWrite(ledMid, LOW);
+      digitalWrite(ledLeft, LOW);
 
       servoLeft.writeMicroseconds(1500);
       servoRight.writeMicroseconds(1500);
@@ -94,4 +77,3 @@ int detectScenario() {
 
   return -1;
 }
-

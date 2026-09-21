@@ -5,7 +5,7 @@ Servo servoRight;
 
 // Drive sensors
 const int irLedLeft = 10, irReceiverLeft = 11;
-const int irLedMid = ___, irReceiverMid = ___;      // fill in your actual mid sensor pins
+const int irLedMid = 6, irReceiverMid = 6;
 const int irLedRight = 2, irReceiverRight = 3;
 
 // Indicator LEDs

@@ -5,13 +5,17 @@ Servo servoRight;
 
 // Drive sensors
 const int irLedLeft = 10, irReceiverLeft = 11;
-const int irLedMid = 6, irReceiverMid = 7;      // fill in your actual mid sensor pins
+const int irLedMid = ___, irReceiverMid = ___;      // fill in your actual mid sensor pins
 const int irLedRight = 2, irReceiverRight = 3;
 
 // Indicator LEDs
 const int ledRight = A0;
 const int ledMid = A1;
 const int ledLeft = A2;
+
+// Timing constants - these are placeholders, tune them by testing on the real robot
+const int ROTATE_90_MS = 700;        // how long to spin to complete a 90 degree turn
+const int FORWARD_REENTRY_MS = 1200; // how long to drive forward after turning, to re-enter the corridor
 
 int irDetect(int irLedPin, int irReceiverPin, long frequency) {
   tone(irLedPin, frequency);
@@ -47,7 +51,29 @@ void loop() {
 
   switch (scenario) {
 
-    // Scenarios 2-10 will get their own case here as you build them out
+    case 2:
+      // Scenario 2: Ideal position for Right Turn
+      digitalWrite(ledRight, LOW);
+      digitalWrite(ledMid, HIGH);
+      digitalWrite(ledLeft, LOW);
+
+      delay(5000);   // hold LED display so it's visible
+
+      // rotate 90 degrees (clockwise/right) - both wheels same value = spin in place
+      servoLeft.writeMicroseconds(1600);
+      servoRight.writeMicroseconds(1600);
+      delay(ROTATE_90_MS);
+
+      // move forward to re-enter the corridor
+      servoLeft.writeMicroseconds(1600);
+      servoRight.writeMicroseconds(1400);
+      delay(FORWARD_REENTRY_MS);
+
+      servoLeft.writeMicroseconds(1500);
+      servoRight.writeMicroseconds(1500);
+      break;
+
+    // Scenarios 3-10 will get their own case here as you build them out
 
     default:
       digitalWrite(ledRight, LOW);
@@ -73,7 +99,9 @@ int detectScenario() {
   int mid = irDetect(irLedMid, irReceiverMid, 38000);
   int right = irDetect(irLedRight, irReceiverRight, 38000);
 
-  // no scenarios wired up yet - falls through to default in the switch
+  if (right == 1 && left == 0 && mid == 0) {
+    return 2;   // right open, left wall, forward wall
+  }
 
-  return -1;
+  return -1;   // falls through to default
 }

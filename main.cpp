@@ -13,10 +13,6 @@ const int ledRight = A0;
 const int ledMid = A1;
 const int ledLeft = A2;
 
-// How long to drive forward to cover ~5cm - calculate this from your
-// Part 2.2 transfer curve: time = distance / your calibrated cm/s speed
-const int FORWARD_5CM_MS = 1500;   // placeholder, replace with your real value
-
 int irDetect(int irLedPin, int irReceiverPin, long frequency) {
   tone(irLedPin, frequency);
   delay(1);
@@ -47,41 +43,37 @@ void setup() {
 }
 
 void loop() {
+  int scenario = detectScenario();
+
+  switch (scenario) {
+
+    // Scenarios 2-10 will get their own case here as you build them out
+
+    default:
+      digitalWrite(ledRight, LOW);
+      digitalWrite(ledMid, LOW);
+      digitalWrite(ledLeft, LOW);
+
+      servoLeft.writeMicroseconds(1500);
+      servoRight.writeMicroseconds(1500);
+      delay(5000);
+
+      while (true) {
+        servoLeft.writeMicroseconds(1500);
+        servoRight.writeMicroseconds(1500);
+      }
+      break;
+  }
+}
+
+// Returns which scenario matches the current sensor readings.
+// Add real detection logic here as you build out each scenario.
+int detectScenario() {
   int left = irDetect(irLedLeft, irReceiverLeft, 38000);
   int mid = irDetect(irLedMid, irReceiverMid, 38000);
   int right = irDetect(irLedRight, irReceiverRight, 38000);
 
-  if (mid == 1 && left == right) {
-    // Scenario 1: middle of a long corridor
-    digitalWrite(ledRight, HIGH);
-    digitalWrite(ledMid, LOW);
-    digitalWrite(ledLeft, LOW);
+  // no scenarios wired up yet - falls through to default in the switch
 
-    delay(5000);   // hold LED display so it's visible
-
-    servoLeft.writeMicroseconds(1600);
-    servoRight.writeMicroseconds(1400);
-    delay(FORWARD_5CM_MS);
-
-    servoLeft.writeMicroseconds(1500);
-    servoRight.writeMicroseconds(1500);
-  }
-
-  // add more "else if (...)" blocks here for scenarios 2-10
-
-  else {
-    // Scenario 0: Unknown Scenario
-    digitalWrite(ledRight, LOW);
-    digitalWrite(ledMid, LOW);
-    digitalWrite(ledLeft, LOW);
-
-    servoLeft.writeMicroseconds(1500);
-    servoRight.writeMicroseconds(1500);
-    delay(5000);
-
-    while (true) {
-      servoLeft.writeMicroseconds(1500);
-      servoRight.writeMicroseconds(1500);
-    }
-  }
+  return -1;
 }

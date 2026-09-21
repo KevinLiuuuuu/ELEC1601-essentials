@@ -67,8 +67,6 @@ void loop() {
     servoRight.writeMicroseconds(1500);
   }
 
-  // add more "else if (...)" blocks here for scenarios 2-10
-
   else {
     // Scenario 0: Unknown Scenario
     digitalWrite(ledRight, LOW);
@@ -85,3 +83,4 @@ void loop() {
     }
   }
 }
+

@@ -13,6 +13,15 @@ const int ledRight = A0;
 const int ledMid = A1;
 const int ledLeft = A2;
 
+// Value for frequencies needed to send to tone to detect distances
+// WARNING: THESE ARE PLACEHOLDER VALUES, UPDATE WHEN WE CONFIGURE SENSORS!!
+const long leftClose = 24000;
+const long leftMedium = 34000;
+const long rightClose = 24000;
+const long rightMedium = 34000;
+const long midClose = 24000;
+const long midMedium = 34000;
+
 // Timing constants - placeholders, tune by testing on the real robot
 const int ROTATE_90_MS = 700;        // how long to spin to complete a 90 degree turn
 const int FORWARD_REENTRY_MS = 1200; // how long to drive forward after turning, to re-enter the corridor
@@ -64,11 +73,67 @@ void setup() {
   delay(5000);   // 5 second startup delay before any movement starts
 }
 
+void setLEDs(int left, int middle, int right) {
+  digitalWrite(ledLeft, left);
+  digitalWrite(ledMid, middle);
+  digitalWrite(ledRight, right);
+}
+
+
+void moveForward() {
+  // Move forward
+      servoLeft.writeMicroseconds(1600);
+      servoRight.writeMicroseconds(1400);
+      // For five seconds (adjust to time needed to move 5cm)
+      delay(5000);
+}
+
+void moveBackward() {
+  // Move backward
+      servoLeft.writeMicroseconds(1400);
+      servoRight.writeMicroseconds(1600);
+      // For five seconds (adjust to time needed to move 5cm)
+      delay(5000);
+}
+
 void loop() {
   int scenario = detectScenario();
 
   switch (scenario) {
 
+    case 1:
+      setLEDs(HIGH, LOW, LOW);
+
+      moveForward();
+      // Stop moving
+      servoLeft.writeMicroseconds(1500);
+      servoRight.writeMicroseconds(1500);
+      break;
+    case 4:
+      setLEDs(LOW, LOW, HIGH);
+
+      // Rotates counter-clockwise
+      servoLeft.writeMicroseconds(1400);
+      servoRight.writeMicroseconds(1400);
+      // For three seconds (adjust to time needed to rotate)
+      delay(3000);
+      moveForward();
+      // Stop moving
+      servoLeft.writeMicroseconds(1500);
+      servoRight.writeMicroseconds(1500);
+      break;
+    case 9:
+      setLEDs(LOW, LOW, LOW);
+      delay(1000);
+      setLEDs(LOW, HIGH, LOW);
+      delay(1000);
+      setLEDs(LOW, LOW, LOW);
+
+      // Move backwards, rest will be handled by case 5.
+      moveBackward();
+      // Stop moving
+      servoLeft.writeMicroseconds(1500);
+      servoRight.writeMicroseconds(1500);
     case 2:
       // Scenario 2: Ideal position for Right Turn
       digitalWrite(ledRight, LOW);
@@ -210,6 +275,25 @@ void stopRobot() {
 
 // Returns which scenario matches the current sensor readings.
 int detectScenario() {
+  int leftLedClose = irDetect(irLedLeft, irReceiverLeft, leftClose);
+  int midLedClose = irDetect(irLedMid, irReceiverMid, midClose);
+  int rightLedClose = irDetect(irLedRight, irReceiverRight, rightClose);
+
+  int leftLedMedium = irDetect(irLedLeft, irReceiverLeft, leftMedium);
+  int midLedMedium = irDetect(irLedMid, irReceiverMid, midMedium);
+  int rightLedMedium = irDetect(irLedRight, irReceiverRight, rightMedium);
+
+  if(leftLedMedium && !midLedMedium && rightLedMedium) {
+    return 1;
+  } else if (leftLedMedium && midLedMedium && rightLedMedium) {
+    return 4;
+  } else if (leftLedClose && midLedMedium && rightLedMedium) {
+    // Close to (but parallel to) left wall. Wall in front.
+    return 9;
+  }
+
+  return 0;
+}
   int leftZone = irDistance(irLedLeft, irReceiverLeft);
   int midZone = irDistance(irLedMid, irReceiverMid);
   int rightZone = irDistance(irLedRight, irReceiverRight);

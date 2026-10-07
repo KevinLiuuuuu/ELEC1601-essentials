@@ -24,7 +24,9 @@ const long midMedium = 34000;
 
 // Timing constants - placeholders, tune by testing on the real robot
 const int ROTATE_90_MS = 700;        // how long to spin to complete a 90 degree turn
+const int ROTATE_180_MS = 1400;
 const int FORWARD_REENTRY_MS = 1200; // how long to drive forward after turning, to re-enter the corridor
+const int FORWARD_5CM_MS = 500;
 const int SMALL_ROTATE_MS = 250;
 const int FORWARD_ADJUST_MS = 700;
 const int BACKWARD_ADJUST_MS = 700;
@@ -33,6 +35,7 @@ const int BACKWARD_ADJUST_MS = 700;
 // within range, zone 5 means no detection at any frequency (no wall, or far away)
 const int NO_WALL_ZONE = 5;
 const int SIGNIFICANTLY_CLOSE_ZONE = 2;
+const int SIMILAR_ZONE_DIFFERENCE = 1;
 
 int irDetect(int irLedPin, int irReceiverPin, long frequency) {
   tone(irLedPin, frequency);
@@ -150,8 +153,7 @@ void loop() {
       servoRight.writeMicroseconds(1400);
       delay(FORWARD_REENTRY_MS);
 
-      servoLeft.writeMicroseconds(1500);
-      servoRight.writeMicroseconds(1500);
+      stopRobot();
       break;
 
     case 3:
@@ -170,8 +172,36 @@ void loop() {
       servoRight.writeMicroseconds(1400);
       delay(FORWARD_REENTRY_MS);
 
-      servoLeft.writeMicroseconds(1500);
-      servoRight.writeMicroseconds(1500);
+      stopRobot();
+      break;
+
+    case 1:
+      // Scenario 1: centred in a straight corridor
+      digitalWrite(ledRight, HIGH);
+      digitalWrite(ledMid, LOW);
+      digitalWrite(ledLeft, LOW);
+      delay(5000);
+
+      servoLeft.writeMicroseconds(1600);
+      servoRight.writeMicroseconds(1400);
+      delay(FORWARD_5CM_MS);
+      stopRobot();
+      break;
+
+    case 4:
+      // Scenario 4: dead end
+      digitalWrite(ledRight, LOW);
+      digitalWrite(ledMid, LOW);
+      digitalWrite(ledLeft, HIGH);
+      delay(5000);
+
+      servoLeft.writeMicroseconds(1600);
+      servoRight.writeMicroseconds(1600);
+      delay(ROTATE_180_MS);
+      servoLeft.writeMicroseconds(1600);
+      servoRight.writeMicroseconds(1400);
+      delay(FORWARD_5CM_MS);
+      stopRobot();
       break;
 
     case 5:
@@ -235,12 +265,14 @@ void loop() {
 
     case 8:
       // Scenario 8: angled toward the right wall
-      digitalWrite(ledRight, HIGH);
-      digitalWrite(ledMid, LOW);
-      digitalWrite(ledLeft, LOW);
-      delay(1000);
-      digitalWrite(ledRight, LOW);
-      delay(1000);
+      for (int flash = 0; flash < 3; flash++) {
+        digitalWrite(ledRight, HIGH);
+        digitalWrite(ledMid, LOW);
+        digitalWrite(ledLeft, LOW);
+        delay(1000);
+        digitalWrite(ledRight, LOW);
+        delay(1000);
+      }
 
       servoLeft.writeMicroseconds(1400);
       servoRight.writeMicroseconds(1400);
@@ -248,7 +280,8 @@ void loop() {
       stopRobot();
       break;
 
-    default:
+    case 0:
+      // Scenario 0: unknown position; remain stopped
       digitalWrite(ledRight, LOW);
       digitalWrite(ledMid, LOW);
       digitalWrite(ledLeft, LOW);
@@ -308,6 +341,15 @@ int detectScenario() {
     return 8;   // right and forward walls close, left side open
   }
 
+  if (leftZone < NO_WALL_ZONE && midZone < NO_WALL_ZONE && rightZone < NO_WALL_ZONE) {
+    return 4;   // all three sensors see a wall
+  }
+
+  if (leftZone < NO_WALL_ZONE && rightZone < NO_WALL_ZONE && midZone == NO_WALL_ZONE &&
+      abs(leftZone - rightZone) <= SIMILAR_ZONE_DIFFERENCE) {
+    return 1;   // side walls are similar and the corridor ahead is open
+  }
+
   if (rightZone == NO_WALL_ZONE && leftZone < NO_WALL_ZONE && midZone < NO_WALL_ZONE) {
     return 2;   // right open, left wall in range, forward wall in range
   }
@@ -326,5 +368,5 @@ int detectScenario() {
     return 6;   // both side walls, left wall significantly closer, forward open
   }
 
-  return -1;   // falls through to default
+  return 0;   // unknown scenario; remain stopped
 }

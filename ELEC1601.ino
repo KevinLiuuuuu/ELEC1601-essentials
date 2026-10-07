@@ -26,23 +26,25 @@ const int LEFT_BACK = 1400, RIGHT_BACK = 1600;
 // (RPM x pi x wheel diameter / 60). 6.1 assumes a 6.5 cm wheel at 18 RPM.
 const float DRIVE_SPEED_CM_PER_S = 6.1;
 
-const int ROTATE_90_MS = 700;               // spin time for 90 degrees
+const int ROTATE_90_MS = 700;                  // spin time for 90 degrees (tune this one)
 const int ROTATE_180_MS = 2 * ROTATE_90_MS;
-const int SMALL_ROTATE_MS = 250;            // ~30 degrees / small corrections
+const int SMALL_ROTATE_MS = ROTATE_90_MS / 3;  // ~30 degrees, follows ROTATE_90_MS automatically
 
-const float STEP_CM = 5.0;        // scenario 1: move 5 cm, scenario 9: back up
+const float STEP_CM = 5.0;        // scenario 1: move 5 cm; scenarios 9/10: back up
 const float REENTRY_CM = 8.0;     // scenarios 2/3: drive far enough to re-enter the corridor
 const float DEAD_END_CM = 6.0;    // scenario 4: "at least 5 cm"
-const float ADJUST_CM = 4.0;      // scenarios 5/6: sideways correction
+const float ADJUST_CM = 4.0;      // scenarios 5/6: diagonal move (sideways shift = ADJUST_CM x 0.5)
+const float COS_30 = 0.87;        // back up by ADJUST_CM x cos(30) to end level with the start
 
 const int DISPLAY_MS = 5000;      // LEDs show the code with the robot still for this long
 const bool HALT_AFTER_SCENARIO = true;   // spec: "stop after completion". Set false for the extension maze.
+const bool DEBUG_SERIAL = true;          // print sensor zones to Serial Monitor (9600 baud) for calibration
 
 // ===================== SENSOR ZONES =====================
 // irDistance() returns 0-5: how many of the 38-42 kHz tones were NOT detected.
 // From your calibration table: 0 = within ~5 cm, 4 = ~10 cm, 5 = nothing in range.
 const int NO_WALL_ZONE = 5;
-const int FAR_ZONE = 4;            // this zone or higher = far wall or no wall
+const int FAR_ZONE = 4;            // a wall that is seen but far away
 const int NEAR_ZONE = 2;           // this zone or lower = wall is close
 const int SIMILAR_DIFF = 1;        // left/right zones within this = "similar reading"
 const int SIGNIFICANT_DIFF = 2;    // zone gap that counts as "significantly closer"
@@ -130,14 +132,13 @@ void showCode(int right, int mid, int left) {
   delay(DISPLAY_MS);
 }
 
-// Flash one LED (1 s on, 1 s off) for at least DISPLAY_MS with the robot still
-void flashCode(int ledPin) {
+// Flash the chosen LEDs together (1 s on, 1 s off) for at least DISPLAY_MS with the robot still
+void flashCode(int right, int mid, int left) {
   stopMotors();
-  setLEDs(LOW, LOW, LOW);
   for (int i = 0; i < DISPLAY_MS / 2000 + 1; i++) {
-    digitalWrite(ledPin, HIGH);
+    setLEDs(right, mid, left);
     delay(1000);
-    digitalWrite(ledPin, LOW);
+    setLEDs(LOW, LOW, LOW);
     delay(1000);
   }
 }
@@ -150,6 +151,15 @@ int detectScenario() {
   int midZone = irDistance(irLedMid, irReceiverMid);
   int rightZone = irDistance(irLedRight, irReceiverRight);
 
+  if (DEBUG_SERIAL) {
+    Serial.print("L ");
+    Serial.print(leftZone);
+    Serial.print("  M ");
+    Serial.print(midZone);
+    Serial.print("  R ");
+    Serial.println(rightZone);
+  }
+
   bool leftWall = leftZone < NO_WALL_ZONE;
   bool rightWall = rightZone < NO_WALL_ZONE;
 
@@ -158,38 +168,46 @@ int detectScenario() {
   bool rightNear = rightZone <= NEAR_ZONE;
 
   // Front: a wall closer than ~10 cm counts as "wall ahead", anything else is clear
-  // (spec: scenario 1 needs "no wall, or a wall at least 10 cm away").
+  // (spec: scenarios 1/5/6 need "no wall, or a wall at least 10 cm away").
   bool midWall = midZone < FAR_ZONE;
   bool frontClear = !midWall;
 
-  // 7: angled toward the left wall - left and front walls close, right side far/open
-  if (leftNear && midNear && rightZone >= FAR_ZONE) {
+  // 2: right turn - right sees no wall, left and front see a wall.
+  // Checked before 7 so an ideal right turn is never mistaken for an angled robot.
+  if (rightZone == NO_WALL_ZONE && leftWall && midWall) {
+    return 2;
+  }
+
+  // 3: left turn - left sees no wall, right and front see a wall
+  if (leftZone == NO_WALL_ZONE && rightWall && midWall) {
+    return 3;
+  }
+
+  // 7: angled ~30 deg toward the left wall - left and front close, right wall far away (but seen).
+  // Front close is what separates this from scenario 1.
+  if (leftNear && midNear && rightZone == FAR_ZONE) {
     return 7;
   }
 
-  // 8: angled toward the right wall - right and front walls close, left side far/open
-  if (rightNear && midNear && leftZone >= FAR_ZONE) {
+  // 8: angled ~30 deg toward the right wall - right and front close, left wall far away (but seen).
+  // Right wall close is what separates this from scenario 2.
+  if (rightNear && midNear && leftZone == FAR_ZONE) {
     return 8;
   }
 
-  // 9 (custom): dead-end shape but hugging the left wall - back up first, then re-detect
+  // 9 (custom): dead-end shape but hugging the LEFT wall - back up so it can re-detect cleanly
   if (leftNear && midWall && rightWall && !rightNear) {
     return 9;
+  }
+
+  // 10 (custom): dead-end shape but hugging the RIGHT wall - back up so it can re-detect cleanly
+  if (rightNear && midWall && leftWall && !leftNear) {
+    return 10;
   }
 
   // 4: dead end - walls on all three sides
   if (leftWall && midWall && rightWall) {
     return 4;
-  }
-
-  // 2: right turn - right open, left and front walls
-  if (rightZone == NO_WALL_ZONE && leftWall && midWall) {
-    return 2;
-  }
-
-  // 3: left turn - left open, right and front walls
-  if (leftZone == NO_WALL_ZONE && rightWall && midWall) {
-    return 3;
   }
 
   // 1: middle of a corridor - both walls at a similar distance, front clear
@@ -215,6 +233,10 @@ int detectScenario() {
 
 // ===================== MAIN =====================
 void setup() {
+  if (DEBUG_SERIAL) {
+    Serial.begin(9600);
+  }
+
   servoLeft.attach(13);
   servoRight.attach(12);
 
@@ -241,76 +263,86 @@ void loop() {
     return;   // two readings disagreed, so read again rather than act on a glitch
   }
 
+  if (DEBUG_SERIAL) {
+    Serial.print("Scenario ");
+    Serial.println(scenario);
+  }
+
   switch (scenario) {
 
-    case 1:   // middle of a long corridor
+    case 1:   // middle of a long corridor: R on
       showCode(HIGH, LOW, LOW);
       moveForwardCm(STEP_CM);
       finishScenario();
       break;
 
-    case 2:   // ideal position for a right turn
+    case 2:   // ideal position for a right turn: Mid on
       showCode(LOW, HIGH, LOW);
       rotateClockwise(ROTATE_90_MS);
       moveForwardCm(REENTRY_CM);
       finishScenario();
       break;
 
-    case 3:   // ideal position for a left turn
+    case 3:   // ideal position for a left turn: R + Mid on
       showCode(HIGH, HIGH, LOW);
       rotateAnticlockwise(ROTATE_90_MS);
       moveForwardCm(REENTRY_CM);
       finishScenario();
       break;
 
-    case 4:   // dead end
+    case 4:   // dead end: L on
       showCode(LOW, LOW, HIGH);
       rotateAnticlockwise(ROTATE_180_MS);
       moveForwardCm(DEAD_END_CM);
       finishScenario();
       break;
 
-    case 5:   // close to the left wall, parallel to it
+    case 5:   // close to the left wall, parallel: R + L on
       showCode(HIGH, LOW, HIGH);
       rotateClockwise(SMALL_ROTATE_MS);
       moveForwardCm(ADJUST_CM);
       rotateAnticlockwise(SMALL_ROTATE_MS);
-      moveBackwardCm(ADJUST_CM);
+      moveBackwardCm(ADJUST_CM * COS_30);
       finishScenario();
       break;
 
-    case 6:   // close to the right wall, parallel to it
+    case 6:   // close to the right wall, parallel: Mid + L on
       showCode(LOW, HIGH, HIGH);
       rotateAnticlockwise(SMALL_ROTATE_MS);
       moveForwardCm(ADJUST_CM);
       rotateClockwise(SMALL_ROTATE_MS);
-      moveBackwardCm(ADJUST_CM);
+      moveBackwardCm(ADJUST_CM * COS_30);
       finishScenario();
       break;
 
-    case 7:   // angled ~30 degrees toward the left wall
+    case 7:   // angled ~30 degrees toward the left wall: all on
       showCode(HIGH, HIGH, HIGH);
       rotateClockwise(SMALL_ROTATE_MS);
       finishScenario();
       break;
 
-    case 8:   // angled ~30 degrees toward the right wall
-      flashCode(ledRight);
+    case 8:   // angled ~30 degrees toward the right wall: R flashing
+      flashCode(HIGH, LOW, LOW);
       rotateAnticlockwise(SMALL_ROTATE_MS);
       finishScenario();
       break;
 
-    case 9:   // custom: hugging the left wall with a wall ahead - back up, then re-detect
-      flashCode(ledMid);
+    case 9:   // custom: hugging the left wall with a wall ahead: Mid flashing
+      flashCode(LOW, HIGH, LOW);
       moveBackwardCm(STEP_CM);
-      stopMotors();
+      finishScenario();   // spec says stop; with HALT_AFTER_SCENARIO = false it re-detects
+      break;
+
+    case 10:  // custom: hugging the right wall with a wall ahead: R + Mid flashing
+      flashCode(HIGH, HIGH, LOW);
+      moveBackwardCm(STEP_CM);
+      finishScenario();
       break;
 
     default:  // 0: unknown - LEDs off and no movement at all
       setLEDs(LOW, LOW, LOW);
       servoLeft.detach();   // stop sending pulses so the wheels cannot creep
       servoRight.detach();
-      delay(DISPLAY_MS);
       while (true) {
         delay(1000);
       }

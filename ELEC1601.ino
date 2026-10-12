@@ -1,4 +1,4 @@
-// ELEC1601 Shield-Bot - essentials scenarios 0-8 plus own scenario 9
+// ELEC1601 Shield-Bot - essentials scenarios 0-8 plus own scenarios 9 and 10
 #include <Servo.h>
 
 Servo servoLeft;
@@ -148,6 +148,7 @@ int detectScenario() {
   bool leftWall = !leftOpen;
   bool rightWall = !rightOpen;
   bool leftNear = (L <= NEAR_ZONE);
+  bool leftMedium = (L > NEAR_ZONE && L < NO_WALL_ZONE);   // zones 3-4: wall a bit further away
   bool rightNear = (R <= NEAR_ZONE);
   bool midNear = (M <= NEAR_ZONE);
   bool midWall = (M < FAR_ZONE);
@@ -164,6 +165,7 @@ int detectScenario() {
   if (leftNear && rightOpen && frontClear) return 7;                 // angled to left wall
   if (rightNear && leftOpen && frontClear) return 8;                 // angled to right wall
   if (leftOpen && rightOpen && midWall) return 9;                    // own: wall ahead only, both sides open
+  if (leftMedium && rightOpen && frontClear) return 10;              // own: left wall at medium distance only
   return 0;
 }
 
@@ -232,6 +234,10 @@ void loop() {
       flashCode(LOW, HIGH, LOW);
       rotateClockwise(ROTATE_90_MS);
       moveForwardCm(REENTRY_CM);
+      break;
+    case 10:   // own: left wall only, at medium distance - flash left LED, drive forward
+      flashCode(LOW, LOW, HIGH);
+      moveForwardCm(2 * STEP_CM);
       break;
     default:   // scenario 0: LEDs off, no movement
       setLEDs(LOW, LOW, LOW);

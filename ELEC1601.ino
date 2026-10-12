@@ -19,7 +19,12 @@ const int LEFT_BACK = 1400, RIGHT_BACK = 1600;
 const float DRIVE_SPEED_CM_PER_S = 12.5;
 const int ROTATE_90_MS = 577;
 const int ROTATE_180_MS = 2 * ROTATE_90_MS;
-const int SMALL_ROTATE_MS = ROTATE_90_MS / 3;     // ~30 degrees
+
+// ~30 degree turns, tuned separately per direction (servos are never perfectly matched).
+// Used by scenarios 5-8. Tune these two in the lab (see notes) until 5 and 6 finish parallel.
+const int CW_30_MS  = ROTATE_90_MS / 3;
+const int CCW_30_MS = ROTATE_90_MS / 3;
+const int SETTLE_MS = 200;                        // pause so the wheels fully stop between moves
 
 const float STEP_CM = 5.0;        // scenario 1
 const float REENTRY_CM = 12.0;    // scenarios 2, 3
@@ -75,19 +80,26 @@ void moveBackwardCm(float cm) { drive(LEFT_BACK, RIGHT_BACK, msForCm(cm)); }
 void rotateClockwise(int ms)     { drive(LEFT_FWD, RIGHT_BACK, ms); }
 void rotateAnticlockwise(int ms) { drive(LEFT_BACK, RIGHT_FWD, ms); }
 
-// Scenario 5: sidestep to the right, keep original heading
+// Scenario 5: sidestep to the right, keep original heading.
+// Turn out 30, drive the diagonal, turn back 30, reverse the forward part.
 void shiftRight() {
-  rotateClockwise(SMALL_ROTATE_MS);
+  rotateClockwise(CW_30_MS);
+  delay(SETTLE_MS);
   moveForwardCm(DIAGONAL_CM);
-  rotateAnticlockwise(SMALL_ROTATE_MS);
+  delay(SETTLE_MS);
+  rotateAnticlockwise(CCW_30_MS);
+  delay(SETTLE_MS);
   moveBackwardCm(RETURN_CM);
 }
 
 // Scenario 6: sidestep to the left, keep original heading
 void shiftLeft() {
-  rotateAnticlockwise(SMALL_ROTATE_MS);
+  rotateAnticlockwise(CCW_30_MS);
+  delay(SETTLE_MS);
   moveForwardCm(DIAGONAL_CM);
-  rotateClockwise(SMALL_ROTATE_MS);
+  delay(SETTLE_MS);
+  rotateClockwise(CW_30_MS);
+  delay(SETTLE_MS);
   moveBackwardCm(RETURN_CM);
 }
 
@@ -141,10 +153,12 @@ int detectScenario() {
   bool midWall = (M < FAR_ZONE);
   bool frontClear = !midWall;
 
+  // 7 and 8 first: when angled at a wall the front sensor also sees that wall,
+  // so 2/3 would otherwise grab it. The far side may read 4 (far) or 5 (nothing).
+  if (leftNear && midNear && R >= FAR_ZONE) return 7;                // angled to left wall
+  if (rightNear && midNear && L >= FAR_ZONE) return 8;               // angled to right wall
   if (rightOpen && leftWall && midWall) return 2;                    // right turn
   if (leftOpen && rightWall && midWall) return 3;                    // left turn
-  if (leftNear && midNear && R == FAR_ZONE) return 7;                // angled to left wall
-  if (rightNear && midNear && L == FAR_ZONE) return 8;               // angled to right wall
   if (leftWall && rightWall && midWall) return 4;                    // dead end
   if (leftWall && rightWall && frontClear && abs(L - R) <= SIMILAR_DIFF) return 1;   // corridor middle
   if (leftWall && rightWall && frontClear && L + SIGNIFICANT_DIFF <= R) return 5;    // close to left wall
@@ -209,11 +223,11 @@ void loop() {
       break;
     case 7:
       showCode(HIGH, HIGH, HIGH);
-      rotateClockwise(SMALL_ROTATE_MS);
+      rotateClockwise(CW_30_MS);
       break;
     case 8:
       flashCode(HIGH, LOW, LOW);
-      rotateAnticlockwise(SMALL_ROTATE_MS);
+      rotateAnticlockwise(CCW_30_MS);
       break;
     case 9:    // own: wall ahead only (T-junction) - flash mid LED, turn right and go
       flashCode(LOW, HIGH, LOW);

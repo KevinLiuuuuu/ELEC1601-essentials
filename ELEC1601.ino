@@ -1,4 +1,4 @@
-// ELEC1601 Shield-Bot - essentials scenarios 0-8 plus own scenarios 9 and 10
+// ELEC1601 Shield-Bot - essentials scenarios 0-8 plus own scenario 9
 #include <Servo.h>
 
 Servo servoLeft;
@@ -153,18 +153,17 @@ int detectScenario() {
   bool midWall = (M < FAR_ZONE);
   bool frontClear = !midWall;
 
-  // 7 and 8 first: when angled at a wall the front sensor also sees that wall,
-  // so 2/3 would otherwise grab it. The far side may read 4 (far) or 5 (nothing).
-  if (leftNear && midNear && R >= FAR_ZONE) return 7;                // angled to left wall
-  if (rightNear && midNear && L >= FAR_ZONE) return 8;               // angled to right wall
   if (rightOpen && leftWall && midWall) return 2;                    // right turn
   if (leftOpen && rightWall && midWall) return 3;                    // left turn
   if (leftWall && rightWall && midWall) return 4;                    // dead end
   if (leftWall && rightWall && frontClear && abs(L - R) <= SIMILAR_DIFF) return 1;   // corridor middle
   if (leftWall && rightWall && frontClear && L + SIGNIFICANT_DIFF <= R) return 5;    // close to left wall
   if (leftWall && rightWall && frontClear && R + SIGNIFICANT_DIFF <= L) return 6;    // close to right wall
+  // Measured: angled to the left wall reads 0,5,5 and to the right wall 5,5,0
+  // (only the near side sensor sees the wall; front and far side read nothing).
+  if (leftNear && rightOpen && frontClear) return 7;                 // angled to left wall
+  if (rightNear && leftOpen && frontClear) return 8;                 // angled to right wall
   if (leftOpen && rightOpen && midWall) return 9;                    // own: wall ahead only, both sides open
-  if (leftNear && rightOpen && frontClear) return 10;                // own: close left wall only, right and front open
   return 0;
 }
 
@@ -233,10 +232,6 @@ void loop() {
       flashCode(LOW, HIGH, LOW);
       rotateClockwise(ROTATE_90_MS);
       moveForwardCm(REENTRY_CM);
-      break;
-    case 10:   // own: left wall only (gap on the right) - flash left LED, drive forward
-      flashCode(LOW, LOW, HIGH);
-      moveForwardCm(2 * STEP_CM);
       break;
     default:   // scenario 0: LEDs off, no movement
       setLEDs(LOW, LOW, LOW);

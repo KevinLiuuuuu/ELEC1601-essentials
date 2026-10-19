@@ -20,7 +20,7 @@ const int irLedRight = 2,  irReceiverRight = 3;
 int leftFwd = 1600;              // L: left wheel forward pulse
 int rightFwd = 1400;             // R: right wheel forward pulse
 float speedCmPerS = 12.5;        // V: drive speed (or measure with d then D)
-int rotate90Ms = 577;            // T: spin time for 90 degrees
+int rotate90Ms = 820;            // T: spin time for 90 degrees
 float cornerCreepCm = 5.0;       // C: creep after stopping at a corner
 float gapAdvanceCm = 11.0;       // G: drive past the end of a left wall before turning
 int frontWallZone = 2;           // F: mid sensor zone that counts as "wall ahead"

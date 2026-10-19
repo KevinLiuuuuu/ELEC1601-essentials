@@ -30,8 +30,8 @@ const int STEER_US = 40;           // how much one wheel is slowed to steer back
 const int STRONG_STEER_US = 80;    // used instead when a wall is very close (zone 0)
 
 // ---------- calibration (use the numbers from ELEC1601_calibrate) ----------
-const float DRIVE_SPEED_CM_PER_S = 12.5;
-const int ROTATE_90_MS = 820;
+const float DRIVE_SPEED_CM_PER_S = 14.5;     // measured: 29 cm in 2 s
+const int ROTATE_90_MS = 619;
 const int ROTATE_180_MS = 2 * ROTATE_90_MS;
 const int ROTATE_30_MS = ROTATE_90_MS / 3;
 const int SETTLE_MS = 200;                 // pause so the wheels fully stop between moves
@@ -43,7 +43,7 @@ const int FAR_ZONE = 4;
 const int NEAR_ZONE = 2;
 const int SIGNIFICANT_DIFF = 2;
 const int FRONT_WALL_ZONE = 2;     // mid sensor this close or closer = wall ahead
-const float CORNER_CREEP_CM = 5.0; // after stopping at a corner, creep this far so the wheels
+const float CORNER_CREEP_CM = 3.0; // after stopping at a corner, creep this far so the wheels
                                    // are in the middle of the corner before turning
 
 // ---------- sensing ----------

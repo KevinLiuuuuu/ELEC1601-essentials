@@ -1,19 +1,12 @@
-// ELEC1601 Shield-Bot - Project Extension, Parts 1 and 2
+// ELEC1601 Shield-Bot - Project Extension, Part 2
 //
-// Set TASK before uploading:
-//   1 = Blue path   : fix a bad start, follow the corridor, stop at the wall in front
-//   2 = Purple path : follow the corridor, turn at the wall, follow the next corridor, stop at the next wall
-//   3 = Yellow path : turn at every wall until a dead end, then stop
-//   4 = Green path  : as 3, spin 180 at the dead end, then do it again to get back to the start
-//   5 = Part 2      : follow the left wall until we reach the "long dead end", then stop.
-//                     Short dead ends: spin 180 and keep going.
-//
-// Built from the essentials scenarios: 5-8 to fix the start, 1 to follow a corridor,
-// 2/3 to turn, 4 for the dead end. The maze may be mirrored, so the robot never assumes
-// a direction: it always turns towards whichever side is open (left first in Part 2).
+// Follow the left wall through the maze (left-hand rule) until the robot reaches the
+// "long dead end" (a straight section exactly two walls long ending in a wall), then stop
+// facing it. At every short dead end it spins 180 and carries on exploring.
+// The maze may be mirrored, so the robot never assumes a direction: it reads the sensors
+// at every junction and always prefers left, then straight, then right.
 #include <Servo.h>
 
-const int TASK = 5;
 const bool DEBUG = false;          // true = print what it measures to the Serial Monitor (9600 baud)
 
 Servo servoLeft;
@@ -36,15 +29,15 @@ const int STRONG_STEER_US = 80;    // used instead when a wall is very close (zo
 const float DRIVE_SPEED_CM_PER_S = 14.5;     // measured: 29 cm in 2 s
 const int ROTATE_90_MS = 570;
 const int ROTATE_180_MS = 2 * ROTATE_90_MS;
-const int ROTATE_30_MS = ROTATE_90_MS / 3;
+const int PIVOT_90_MS = 2 * ROTATE_90_MS;  // a pivot (one wheel still) turns half as fast as a spin
 const int SETTLE_MS = 200;                 // pause so the wheels fully stop between moves
 const float REENTRY_CM = 12.0;             // drive after a turn to get into the new corridor
 
 // ---------- sensor zones (0 = very close ... 5 = nothing), from your measurements ----------
 const int NO_WALL_ZONE = 5;
-const int FAR_ZONE = 4;
-const int NEAR_ZONE = 2;
 const int FRONT_WALL_ZONE = 2;     // mid sensor this close or closer = wall ahead
+
+// ---------- corners ----------
 // Corner turns pivot around the INSIDE wheel (that wheel stays still). Spinning on the spot
 // swings the back of the robot out into the side wall; a pivot moves the robot into the open
 // side while it turns, so the back swings out much less. A pivot already carries the robot
@@ -53,7 +46,7 @@ const float CORNER_CREEP_CM = 0.0; // TUNE: before pivoting at a corner, creep t
                                    // (negative = back up). After the turn the robot is close to
                                    // the outside wall: lower it. Close to the inside corner: raise it.
 
-// ---------- Part 2 ----------
+// ---------- long dead end and left openings ----------
 const int GAP_CONFIRM_READS = 3;   // a side must read "open" this many times in a row to count,
                                    // so one bad reading cannot fool the robot
 const float GAP_ADVANCE_CM = 6.0;  // TUNE in the maze: after the left wall ends,
@@ -132,7 +125,6 @@ void drive(int left, int right, int ms) {
 }
 
 int msForCm(float cm) { return (int)(cm / DRIVE_SPEED_CM_PER_S * 1000.0); }
-const int PIVOT_90_MS = 2 * ROTATE_90_MS;  // a pivot turns half as fast as a spin
 
 void moveForwardCm(float cm)     { drive(LEFT_FWD, RIGHT_FWD, msForCm(cm)); }
 void rotateClockwise(int ms)     { drive(LEFT_FWD, RIGHT_BACK, ms); }   // spin on the spot
@@ -183,7 +175,7 @@ void driveForwardSteered() {
 // What made driveUntil() stop.
 const int FOUND_NOTHING = 0, FOUND_WALL = 1, FOUND_LEFT_GAP = 2;
 
-// Part 2: only take a left opening after we have seen a left wall since the last turn.
+// Only take a left opening after we have seen a left wall since the last turn.
 // Without this, a robot that has just turned left would see "left open" again straight
 // away and keep turning left in circles.
 bool leftWallSeen = false;
@@ -227,35 +219,12 @@ int driveUntil(float maxCm, bool watchLeftGap) {
   return FOUND_NOTHING;
 }
 
-// Part 1 helper: drive until a wall is in front. Returns true if it stopped because of a wall.
+// Drive until a wall is in front. Returns true if it stopped because of a wall.
 bool driveUntilWall(float maxCm) {
   return driveUntil(maxCm, false) == FOUND_WALL;
 }
 
-// ---------- start position fix (essentials scenarios 7 and 8) ----------
-// Near a wall, spinning on the spot swings the back corner into it, so this pivots on
-// one wheel instead. A pivot turns half as fast as a spin, so 30 degrees takes twice as long.
-const int PIVOT_30_MS = 2 * ROTATE_30_MS;
-
-void fixStartPosition() {
-  readSensorsFine();
-  bool leftWall = zoneL < NO_WALL_ZONE;
-  bool rightWall = zoneR < NO_WALL_ZONE;
-  bool frontClear = zoneM >= FAR_ZONE;
-  if (zoneL <= NEAR_ZONE && !rightWall && frontClear) {                  // 7: angled to left wall
-    pivotClockwise(PIVOT_30_MS);
-  } else if (zoneR <= NEAR_ZONE && !leftWall && frontClear) {            // 8: angled to right wall
-    pivotAnticlockwise(PIVOT_30_MS);
-  }
-  // 5 and 6 (parallel but close to one wall) are left to the corridor steering: the S-shaped
-  // pivot swings the back of the robot into the wall it is close to.
-  delay(SETTLE_MS);
-}
-
 // ---------- what to do at a wall ----------
-int turnsDone = 0;
-int deadEndsSeen = 0;
-
 void finish() {
   stopMotors();
   digitalWrite(ledRight, HIGH);    // all LEDs on = task complete
@@ -279,7 +248,6 @@ void afterTurn() {
 void turnLeft() {                  // scenario 3: pivot around the left wheel
   pivotAnticlockwise(PIVOT_90_MS);
   delay(SETTLE_MS);
-  turnsDone++;
   afterTurn();
   driveUntilWall(REENTRY_CM);
 }
@@ -287,21 +255,29 @@ void turnLeft() {                  // scenario 3: pivot around the left wheel
 void turnRight() {                 // scenario 2: pivot around the right wheel
   pivotClockwise(PIVOT_90_MS);
   delay(SETTLE_MS);
-  turnsDone++;
   afterTurn();
   driveUntilWall(REENTRY_CM);
 }
 
-// Scenario 4: spin 180 on the spot. (In a narrow dead end the back of the robot can still
-// brush the side walls here, because a spin swings the back end out.)
+// Scenario 4: spin 180 in the dead end.
+// The back of the robot sticks out further behind the wheels than the front does ahead of
+// them, so in a spin the back sweeps a bigger circle than the front. A clockwise spin swings
+// the back out to the robot's LEFT and the front to its RIGHT. So spin the way that sends
+// the back towards the wall that is further away. Back up a little first so the back has
+// room to swing past the end wall too.
+const float SPIN_BACKUP_CM = 0;      // TUNE: back up this far before the 180
+
 void turnAround() {
-  rotateClockwise(ROTATE_180_MS);
+  readSensorsFine();
+  bool rightCloser = zoneR < zoneL;
+  backUpCm(SPIN_BACKUP_CM);
+  if (rightCloser) rotateClockwise(ROTATE_180_MS);     // back swings out to the left
+  else rotateAnticlockwise(ROTATE_180_MS);              // back swings out to the right
   delay(SETTLE_MS);
   afterTurn();
 }
 
-
-// Part 2: a long dead end is a straight section exactly two walls long.
+// A long dead end is a straight section exactly two walls long.
 bool isLongDeadEnd() {
   return fabs(cmInCorridor - LONG_DEAD_END_CM) <= LONG_TOLERANCE_CM;
 }
@@ -320,30 +296,22 @@ void onFrontWall() {
     Serial.println(cmInCorridor);
   }
 
-  if (TASK == 1) finish();                    // blue: stop at the first wall
-  if (TASK == 2 && turnsDone >= 1) finish();  // purple: stop at the wall after the turn
-
   if (deadEnd) {
-    // green: spin 180 at the first dead end and drive back.
-    // Part 2: spin 180 at every short dead end and keep exploring.
-    if ((TASK == 4 && deadEndsSeen == 0) || (TASK == 5 && !isLongDeadEnd())) {
-      deadEndsSeen++;
-      turnAround();
-      return;
-    }
-    finish();                                 // yellow, the end of green, and the long dead end in Part 2
+    if (isLongDeadEnd()) finish();            // the long dead end: stop here, facing forward
+    turnAround();                             // a short dead end: spin 180 and keep exploring
+    return;
   }
 
   if (CORNER_CREEP_CM > 0) creepForward(CORNER_CREEP_CM);   // line up with the corner
   else backUpCm(-CORNER_CREEP_CM);
-  if (leftOpen) {                             // left first: in Part 2 this is the left-hand rule
+  if (leftOpen) {                             // left first: the left-hand rule
     turnLeft();
   } else {
     turnRight();
   }
 }
 
-// Part 2: the left wall just ended while driving. Drive on until the wheels line up with
+// The left wall just ended while driving. Drive on until the wheels line up with
 // the opening, then turn into it.
 void onLeftGap() {
   if (DEBUG) Serial.println(F("left wall ended"));
@@ -356,7 +324,7 @@ void onLeftGap() {
   turnLeft();
 }
 
-// Part 2: keep a hand on the left wall. Take every left opening; at a wall, turn left
+// Keep a hand on the left wall. Take every left opening; at a wall, turn left
 // if possible, otherwise right; spin out of short dead ends; stop at the long one.
 void followWallLeft() {
   int found = driveUntil(1000, true);
@@ -388,14 +356,8 @@ void setup() {
   digitalWrite(ledLeft, LOW);
   stopMotors();
   delay(5000);               // 5 s before anything happens
-
-  fixStartPosition();
 }
 
 void loop() {
-  if (TASK == 5) {
-    followWallLeft();              // Part 2
-  } else if (driveUntilWall(1000)) {
-    onFrontWall();                 // Part 1
-  }
+  followWallLeft();
 }

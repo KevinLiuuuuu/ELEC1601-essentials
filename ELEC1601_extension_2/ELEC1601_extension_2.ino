@@ -78,13 +78,18 @@ int irDetect(int irLedPin, int irReceiverPin, long frequency) {
 const long FAST_STEP = 1000;
 const long FINE_STEP = 100;
 
-int irDistance(int irLedPin, int irReceiverPin, long step) {
+// How many frequencies in the sweep were NOT detected (more misses = wall further away).
+int irMisses(int irLedPin, int irReceiverPin, long step) {
   int misses = 0;
-  int checks = 0;
   for (long f = 38000; f <= 42000; f += step) {
     misses += irDetect(irLedPin, irReceiverPin, f);
-    checks++;
   }
+  return misses;
+}
+
+int irDistance(int irLedPin, int irReceiverPin, long step) {
+  int checks = (42000 - 38000) / step + 1;
+  int misses = irMisses(irLedPin, irReceiverPin, step);
   return (misses * 5 + checks / 2) / checks;     // scale to 0-5, rounded
 }
 
@@ -262,14 +267,17 @@ void turnRight() {                 // scenario 2: pivot around the right wheel
 // Scenario 4: spin 180 in the dead end.
 // The back of the robot sticks out further behind the wheels than the front does ahead of
 // them, so in a spin the back sweeps a bigger circle than the front. A clockwise spin swings
-// the back out to the robot's LEFT and the front to its RIGHT. So spin the way that sends
-// the back towards the wall that is further away. Back up a little first so the back has
-// room to swing past the end wall too.
+// the back out to the robot's LEFT and the front to its RIGHT. So before turning, compare the
+// two side sensors and spin the way that sends the back towards the wall that is further away.
+// The comparison uses the raw fine-sweep miss counts (0-41), not the 0-5 zones: when the robot
+// is only a little off centre both zones are often equal, but the miss counts still differ.
+// Back up a little first so the back has room to swing past the end wall too.
 const float SPIN_BACKUP_CM = 0;      // TUNE: back up this far before the 180
 
 void turnAround() {
-  readSensorsFine();
-  bool rightCloser = zoneR < zoneL;
+  int missesLeft = irMisses(irLedLeft, irReceiverLeft, FINE_STEP);
+  int missesRight = irMisses(irLedRight, irReceiverRight, FINE_STEP);
+  bool rightCloser = missesRight < missesLeft;
   backUpCm(SPIN_BACKUP_CM);
   if (rightCloser) rotateClockwise(ROTATE_180_MS);     // back swings out to the left
   else rotateAnticlockwise(ROTATE_180_MS);              // back swings out to the right

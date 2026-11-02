@@ -51,7 +51,7 @@ const int GAP_CONFIRM_READS = 3;   // a side must read "open" this many times in
                                    // so one bad reading cannot fool the robot
 const float GAP_ADVANCE_CM = 6.0;  // TUNE in the maze: after the left wall ends,
                                    // drive this far so the wheels line up with the opening
-const float WALL_LENGTH_CM = 25.0; // MEASURE: length of one wall panel (pillar to pillar)
+const float WALL_LENGTH_CM = 27.0; // measured: length of one wall panel (pillar to pillar)
 // cmInCorridor when the robot stops at the end of the long dead end. It is less than two
 // walls because counting starts a little after the opening and the robot stops before the
 // end wall. CALIBRATE: set DEBUG = true, let the robot drive into the long dead end and

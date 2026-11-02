@@ -2,7 +2,8 @@
 //
 // Follow the left wall through the maze (left-hand rule) until the robot reaches the
 // "long dead end" (a straight section exactly two walls long ending in a wall), then stop
-// facing it. At every short dead end it spins 180 and carries on exploring.
+// facing it. At every short dead end it reverses out to the junction, turns round there
+// and carries on exploring.
 // The maze may be mirrored, so the robot never assumes a direction: it reads the sensors
 // at every junction and always prefers left, then straight, then right.
 #include <Servo.h>
@@ -29,6 +30,7 @@ const int STRONG_STEER_US = 80;    // used instead when a wall is very close (zo
 const float DRIVE_SPEED_CM_PER_S = 14.5;     // measured: 29 cm in 2 s
 const int ROTATE_90_MS = 570;
 const int ROTATE_180_MS = 2 * ROTATE_90_MS;
+const int PIVOT_90_MS = 2 * ROTATE_90_MS;  // a pivot (one wheel still) turns half as fast as a spin
 const int SETTLE_MS = 200;                 // pause so the wheels fully stop between moves
 const float REENTRY_CM = 12.0;             // drive after a turn to get into the new corridor
 
@@ -37,16 +39,18 @@ const int NO_WALL_ZONE = 5;
 const int FRONT_WALL_ZONE = 2;     // mid sensor this close or closer = wall ahead
 
 // ---------- corners ----------
-// Corner turns spin on the spot: both wheels drive, one forward and one backward, so the
-// robot turns around the middle of its axle. Before turning it creeps forward so the wheels
-// are in the middle of the corner.
-const float CORNER_CREEP_CM = 4.0; // TUNE: after the turn the robot is close to the outside wall:
-                                   // lower it. Close to the inside corner: raise it.
+// Corner turns pivot around the INSIDE wheel (that wheel stays still). Spinning on the spot
+// swings the back of the robot out into the side wall; a pivot moves the robot into the open
+// side while it turns, so the back swings out much less. A pivot already carries the robot
+// forward a little, so it needs less (or no) creeping into the corner first.
+const float CORNER_CREEP_CM = -1.0; // TUNE: before pivoting at a corner, creep this far forward
+                                   // (negative = back up). After the turn the robot is close to
+                                   // the outside wall: lower it. Close to the inside corner: raise it.
 
 // ---------- long dead end and left openings ----------
 const int GAP_CONFIRM_READS = 3;   // a side must read "open" this many times in a row to count,
                                    // so one bad reading cannot fool the robot
-const float GAP_ADVANCE_CM = 11.0; // TUNE in the maze: after the left wall ends,
+const float GAP_ADVANCE_CM = 6.0;  // TUNE in the maze: after the left wall ends,
                                    // drive this far so the wheels line up with the opening
 const float WALL_LENGTH_CM = 27.0; // measured: length of one wall panel (pillar to pillar)
 // cmInCorridor when the robot stops at the end of the long dead end. It is less than two
@@ -131,6 +135,8 @@ int msForCm(float cm) { return (int)(cm / DRIVE_SPEED_CM_PER_S * 1000.0); }
 void moveForwardCm(float cm)     { drive(LEFT_FWD, RIGHT_FWD, msForCm(cm)); }
 void rotateClockwise(int ms)     { drive(LEFT_FWD, RIGHT_BACK, ms); }   // spin on the spot
 void rotateAnticlockwise(int ms) { drive(LEFT_BACK, RIGHT_FWD, ms); }
+void pivotClockwise(int ms)      { drive(LEFT_FWD, RIGHT_STOP, ms); }   // turn around the right wheel
+void pivotAnticlockwise(int ms)  { drive(LEFT_STOP, RIGHT_FWD, ms); }   // turn around the left wheel
 
 // Creep straight ahead in 1 cm steps (no steering). Used to line up with a corner.
 void creepForward(float cm) {
@@ -245,39 +251,60 @@ void afterTurn() {
   leftOpenReads = 0;
 }
 
-void turnLeft() {                  // scenario 3: spin 90 anticlockwise
-  rotateAnticlockwise(ROTATE_90_MS);
+void turnLeft() {                  // scenario 3: pivot around the left wheel
+  pivotAnticlockwise(PIVOT_90_MS);
   delay(SETTLE_MS);
   afterTurn();
   driveUntilWall(REENTRY_CM);
 }
 
-void turnRight() {                 // scenario 2: spin 90 clockwise
-  rotateClockwise(ROTATE_90_MS);
+void turnRight() {                 // scenario 2: pivot around the right wheel
+  pivotClockwise(PIVOT_90_MS);
   delay(SETTLE_MS);
   afterTurn();
   driveUntilWall(REENTRY_CM);
 }
 
-// Scenario 4: spin 180 in the dead end.
-// The back of the robot sticks out further behind the wheels than the front does ahead of
-// them, so in a spin the back sweeps a bigger circle than the front. A clockwise spin swings
-// the back out to the robot's LEFT and the front to its RIGHT. So before turning, compare the
-// two side sensors and spin the way that sends the back towards the wall that is further away.
-// The comparison uses the raw fine-sweep miss counts (0-41), not the 0-5 zones: when the robot
-// is only a little off centre both zones are often equal, but the miss counts still differ.
-// Back up a little first so the back has room to swing past the end wall too.
-const float SPIN_BACKUP_CM = 0;      // TUNE: back up this far before the 180
+// Scenario 4: escape from a short dead end.
+// The robot is about 20.6 cm corner to corner and the dead ends are 20 cm wide, so it cannot
+// turn round inside one without touching a side wall. The spec allows reversing out instead:
+// back straight out until a side opens up (the junction we came from), then turn there,
+// where the open side gives the back of the robot room to swing.
+const float JUNCTION_BACK_CM = 1.0;   // TUNE: reverse this much further once a side opens
+const float MAX_REVERSE_CM = 120.0;    // never found an opening: give up and spin where we are
+
+// Reverse in 1 cm steps until a side reads open twice in a row. Returns false if it never did.
+bool reverseToJunction() {
+  int openReads = 0;
+  for (float done = 0; done < MAX_REVERSE_CM; done += 1.0) {
+    drive(LEFT_BACK, RIGHT_BACK, msForCm(1.0));
+    readSensors();
+    if (zoneL == NO_WALL_ZONE || zoneR == NO_WALL_ZONE) openReads++; else openReads = 0;
+    if (openReads >= 2) {
+      backUpCm(JUNCTION_BACK_CM);
+      return true;
+    }
+  }
+  return false;
+}
+
+// Spin 180 where we are, swinging the back out towards the open side.
+// (A clockwise spin swings the back out to the left.)
+void spinAround() {
+  readSensorsFine();
+  if (zoneL == NO_WALL_ZONE) rotateClockwise(ROTATE_180_MS);
+  else rotateAnticlockwise(ROTATE_180_MS);
+  delay(SETTLE_MS);
+  afterTurn();
+}
 
 void turnAround() {
-  int missesLeft = irMisses(irLedLeft, irReceiverLeft, FINE_STEP);
-  int missesRight = irMisses(irLedRight, irReceiverRight, FINE_STEP);
-  bool rightCloser = missesRight < missesLeft;
-  backUpCm(SPIN_BACKUP_CM);
-  if (rightCloser) rotateClockwise(ROTATE_180_MS);     // back swings out to the left
-  else rotateAnticlockwise(ROTATE_180_MS);              // back swings out to the right
-  delay(SETTLE_MS);
-  afterTurn();
+  reverseToJunction();
+  spinAround();
+  // Now facing away from the dead end, standing in the junction. Left-hand rule: if the left
+  // is open take it now (we are already past the end of that wall, so we wouldn't notice it).
+  readSensorsFine();
+  if (zoneL == NO_WALL_ZONE) turnLeft();
 }
 
 // A long dead end is a straight section exactly two walls long.
@@ -305,7 +332,8 @@ void onFrontWall() {
     return;
   }
 
-  creepForward(CORNER_CREEP_CM);              // wheels to the middle of the corner
+  if (CORNER_CREEP_CM > 0) creepForward(CORNER_CREEP_CM);   // line up with the corner
+  else backUpCm(-CORNER_CREEP_CM);
   if (leftOpen) {                             // left first: the left-hand rule
     turnLeft();
   } else {

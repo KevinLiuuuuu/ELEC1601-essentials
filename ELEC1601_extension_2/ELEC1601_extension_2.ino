@@ -29,7 +29,6 @@ const int STRONG_STEER_US = 80;    // used instead when a wall is very close (zo
 const float DRIVE_SPEED_CM_PER_S = 14.5;     // measured: 29 cm in 2 s
 const int ROTATE_90_MS = 570;
 const int ROTATE_180_MS = 2 * ROTATE_90_MS;
-const int PIVOT_90_MS = 2 * ROTATE_90_MS;  // a pivot (one wheel still) turns half as fast as a spin
 const int SETTLE_MS = 200;                 // pause so the wheels fully stop between moves
 const float REENTRY_CM = 12.0;             // drive after a turn to get into the new corridor
 
@@ -38,18 +37,16 @@ const int NO_WALL_ZONE = 5;
 const int FRONT_WALL_ZONE = 2;     // mid sensor this close or closer = wall ahead
 
 // ---------- corners ----------
-// Corner turns pivot around the INSIDE wheel (that wheel stays still). Spinning on the spot
-// swings the back of the robot out into the side wall; a pivot moves the robot into the open
-// side while it turns, so the back swings out much less. A pivot already carries the robot
-// forward a little, so it needs less (or no) creeping into the corner first.
-const float CORNER_CREEP_CM = 0.0; // TUNE: before pivoting at a corner, creep this far forward
-                                   // (negative = back up). After the turn the robot is close to
-                                   // the outside wall: lower it. Close to the inside corner: raise it.
+// Corner turns spin on the spot: both wheels drive, one forward and one backward, so the
+// robot turns around the middle of its axle. Before turning it creeps forward so the wheels
+// are in the middle of the corner.
+const float CORNER_CREEP_CM = 4.0; // TUNE: after the turn the robot is close to the outside wall:
+                                   // lower it. Close to the inside corner: raise it.
 
 // ---------- long dead end and left openings ----------
 const int GAP_CONFIRM_READS = 3;   // a side must read "open" this many times in a row to count,
                                    // so one bad reading cannot fool the robot
-const float GAP_ADVANCE_CM = 6.0;  // TUNE in the maze: after the left wall ends,
+const float GAP_ADVANCE_CM = 11.0; // TUNE in the maze: after the left wall ends,
                                    // drive this far so the wheels line up with the opening
 const float WALL_LENGTH_CM = 27.0; // measured: length of one wall panel (pillar to pillar)
 // cmInCorridor when the robot stops at the end of the long dead end. It is less than two
@@ -134,8 +131,6 @@ int msForCm(float cm) { return (int)(cm / DRIVE_SPEED_CM_PER_S * 1000.0); }
 void moveForwardCm(float cm)     { drive(LEFT_FWD, RIGHT_FWD, msForCm(cm)); }
 void rotateClockwise(int ms)     { drive(LEFT_FWD, RIGHT_BACK, ms); }   // spin on the spot
 void rotateAnticlockwise(int ms) { drive(LEFT_BACK, RIGHT_FWD, ms); }
-void pivotClockwise(int ms)      { drive(LEFT_FWD, RIGHT_STOP, ms); }   // turn around the right wheel
-void pivotAnticlockwise(int ms)  { drive(LEFT_STOP, RIGHT_FWD, ms); }   // turn around the left wheel
 
 // Creep straight ahead in 1 cm steps (no steering). Used to line up with a corner.
 void creepForward(float cm) {
@@ -250,15 +245,15 @@ void afterTurn() {
   leftOpenReads = 0;
 }
 
-void turnLeft() {                  // scenario 3: pivot around the left wheel
-  pivotAnticlockwise(PIVOT_90_MS);
+void turnLeft() {                  // scenario 3: spin 90 anticlockwise
+  rotateAnticlockwise(ROTATE_90_MS);
   delay(SETTLE_MS);
   afterTurn();
   driveUntilWall(REENTRY_CM);
 }
 
-void turnRight() {                 // scenario 2: pivot around the right wheel
-  pivotClockwise(PIVOT_90_MS);
+void turnRight() {                 // scenario 2: spin 90 clockwise
+  rotateClockwise(ROTATE_90_MS);
   delay(SETTLE_MS);
   afterTurn();
   driveUntilWall(REENTRY_CM);
@@ -310,8 +305,7 @@ void onFrontWall() {
     return;
   }
 
-  if (CORNER_CREEP_CM > 0) creepForward(CORNER_CREEP_CM);   // line up with the corner
-  else backUpCm(-CORNER_CREEP_CM);
+  creepForward(CORNER_CREEP_CM);              // wheels to the middle of the corner
   if (leftOpen) {                             // left first: the left-hand rule
     turnLeft();
   } else {
